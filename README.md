@@ -2,7 +2,7 @@
 
 **Capstone Project – IIT Patna**
 
-## Project Overview
+## Overview
 
 This project builds a customer intelligence and support copilot for an Instamart-style quick-commerce platform.
 
@@ -15,40 +15,30 @@ It combines:
 - Policy retrieval using TF-IDF and cosine similarity
 - Autonomous refund-support agent using a ReAct workflow
 
-## Technology Stack
+## Reproduce
 
-- Python 3
-- Pandas and NumPy
-- Scikit-learn
-- SQLite
-- TF-IDF and cosine similarity
-- Mock LLM (`mock_llm.py`)
-- JSONL for agent logs and refund ledger
+Run all commands from the project root directory.
 
-## Setup Instructions
-
-### 1. Create Virtual Environment
+### 1. Create and activate the virtual environment
 
 ```powershell
 python -m venv .venv
-```
-
-### 2. Activate Virtual Environment
-
-```powershell
 .\.venv\Scripts\Activate.ps1
 ```
 
-### 3. Install Dependencies
+### 2. Install dependencies
 
 ```powershell
 pip install -r requirements.txt
 ```
-## Run the Project
 
-Run commands from the project root folder.
+### 3. Generate the project data
 
-### Part A – Data Foundation
+```powershell
+python generate_data.py
+```
+
+### 4. Run Part A – Data Foundation
 
 ```powershell
 python src/audit_raw_data.py
@@ -58,52 +48,124 @@ python src/run_sql_queries.py
 python src/verify_sql_details.py
 python src/pandas_analysis.py
 ```
-### Part B – Customer Intelligence and Lapse Prediction
+
+### 5. Run Part B – Customer Intelligence
 
 ```powershell
 python src/customer_models.py
 ```
-### Part C – Support Ticket Classification and Triage
+
+### 6. Run Part C – Ticket Triage
 
 ```powershell
 python src/triage.py
 ```
-### Part D – Policy Retrieval and Refund Agent
+
+### 7. Run Part D – Policy Retrieval and Refund Agent
 
 ```powershell
 python src/policy_rag.py
 python src/refund_agent.py
 ```
-## Key Results
 
-### Part A – Data Foundation
-- Cleaned 12,309 unique orders.
-- Created SQLite database with customers, products, and orders tables.
-- Validated completed-order revenue: INR 2,998,668.80.
+## Part A
 
-### Part B – Customer Intelligence
-- Identified 4 customer segments using K-Means.
-- Selected Oversampled Logistic Regression for lapse prediction.
-- Test recall: 85.39%.
-- Test F1-score: 0.6972.
+### Data Cleaning and Storage
 
-### Part C – Ticket Triage
-- Classified support tickets using zero-shot and few-shot approaches.
-- Applied PII masking, validation, retry handling, and budget controls.
+- Audited the raw customer, order, and product data.
+- Removed exact duplicate orders and retained the latest record for each order ID.
+- Standardized customer city and gender values.
+- Handled missing, invalid, and negative values using documented cleaning rules.
+- Created a SQLite database containing customers, products, and orders tables.
+- All validation checkpoints passed.
 
-### Part D – Policy and Refund Agent
-- Implemented policy retrieval and a ReAct refund-support agent.
-- Added checkpoint-based crash recovery.
-- Recorded agent runs and refund actions in JSONL files.
+### Key Results
 
-## Assumptions and Limitations
+- Cleaned orders: **12,309**
+- Completed orders: **11,110**
+- Cancelled orders: **1,199**
+- Completed-order revenue: **INR 2,998,668.80**
+- Customers in the cleaned dataset: **1,200**
+- Average completed-order amount: **INR 269.91**
+- Customers with above-average completed spend: **550**
 
-- Refund scenarios use the assignment's assumed 7-day request window.
-- The project uses a mock LLM rather than a live production LLM.
-- Model performance is based on the available synthetic dataset.
-- Predictions support business decisions and should not be treated as guaranteed outcomes.
-## ReAct vs Plan-and-Execute
+Pandas analysis independently confirmed the completed-order revenue of INR 2,998,668.80.
 
-The ReAct agent was selected because it alternates reasoning and tool execution. This allows each next action to depend on the previous tool observation. Across seven scenarios, the agent used 30 LLM calls and 9,129 tokens. It stopped early when further actions were unnecessary, such as when an order was cancelled or not found.
+## Part B
+
+### Customer Segmentation and Lapse Prediction
+
+- Built RFM features for **1,175 customers**.
+- Evaluated K-Means clustering for K values from 2 to 8.
+- Selected **K = 4**, with a silhouette score of **0.526**.
+- Identified four segments: Occasional, Premium, Loyal, and Dormant.
+- Built and compared Logistic Regression and Random Forest lapse-prediction models.
+- Selected Oversampled Logistic Regression based on the business objective of prioritizing lapse recall.
+
+### Key Results
+
+- Lapse cohort: **1,156 customers**
+- Lapsed customers: **443 (38.32%)**
+- Test recall: **85.39%**
+- Test F1-score: **0.6972**
+- Model reload prediction check: **Passed**
+
+The model is intended to support customer-retention decisions, not to guarantee future customer behaviour.
+
+## Part C
+
+### Support Ticket Classification and Triage
+
+- Implemented zero-shot and few-shot ticket classification.
+- Added PII masking for email addresses, phone numbers, and order IDs.
+- Added output validation, retry handling, deterministic jitter, and budget controls.
+- Implemented routing to support, security, human-review, and premium queues.
+
+### Key Results
+
+- Zero-shot accuracy: **85.71%**
+- Few-shot accuracy: **100%**
+- Zero-shot tokens: **10,804**
+- Few-shot tokens: **20,320**
+- Few-shot classified tickets: **147**
+- Few-shot tokens per classified ticket: **138.23**
+- Detected PII occurrences: **278**
+  - Emails: **55**
+  - Phone numbers: **91**
+  - Order IDs: **132**
+
+The few-shot run improved classification accuracy on the evaluation data but used more tokens.
+
+## Part D
+
+### Policy Retrieval and Refund Agent
+
+- Implemented policy retrieval using TF-IDF and cosine similarity.
+- Built a ReAct refund-support agent using the supplied mock LLM.
+- Added tool validation, refund limits, iteration limits, token limits, and timeout handling.
+- Added checkpoint-based crash recovery to resume interrupted workflows.
+- Recorded agent execution details in JSONL files and refund actions in a refund ledger.
+
+### Key Results
+
+- Scenarios executed: **7**
+- Total LLM calls: **30**
+- Total tokens used: **9,129**
+- Refund outcomes: **2**
+- Escalation outcomes: **1**
+- Crash-recovery demonstration: **Completed successfully**
+- Token-limit and timeout fallback demonstrations: **Completed**
+
+### ReAct vs Plan-and-Execute
+
+The ReAct agent was selected because it alternates reasoning and tool execution. Each next action can depend on the previous tool observation. Across seven scenarios, the agent used 30 LLM calls and 9,129 tokens. It stopped early when further actions were unnecessary, such as when an order was cancelled or not found.
 
 A Plan-and-Execute agent could provide a more predictable, auditable sequence, but may perform unnecessary steps if an early observation changes the plan. ReAct is more suitable for this workflow, with iteration, token, and timeout limits and checkpoint-based crash recovery.
+
+## Limitations and Next Steps
+
+- Refund scenarios use the assignment's assumed 7-day request window because scenario timestamps are not available.
+- The project uses the supplied mock LLM rather than a live production LLM.
+- Model performance is based on the available synthetic dataset.
+- Customer lapse predictions are not guaranteed outcomes.
+- Future improvements could include testing on real-world data, monitoring model drift, and evaluating additional retention strategies.
