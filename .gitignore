@@ -1,0 +1,10 @@
+﻿.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.vscode/
+.idea/
+*.log
+outputs/terminal_history.txt
+state/generate_data.py
+state/*
