@@ -1,6 +1,7 @@
 
 from pathlib import Path
 import sys
+
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -10,6 +11,7 @@ sys.path.insert(0, str(ROOT))
 
 import mock_llm
 
+
 POLICY_DIR = ROOT / "data" / "policies"
 EVAL_FILE = ROOT / "data" / "raw" / "policy_eval.csv"
 OUTPUT_DIR = ROOT / "outputs"
@@ -18,12 +20,16 @@ CHUNK_SIZE = 40
 OVERLAP = 10
 TOP_K = 3
 
-SYSTEM_PROMPT = """
+FALLBACK_ANSWER = (
+    "I could not find that information in the policy documents."
+)
+
+SYSTEM_PROMPT = f"""
 You are a POLICY ASSISTANT.
 Answer using ONLY the supplied policy context.
 Do not use outside knowledge.
 If the answer cannot be found in the context, respond exactly:
-I could not find that information in the policy documents.
+{FALLBACK_ANSWER}
 """
 
 
@@ -42,14 +48,20 @@ def load_policies():
     return documents
 
 
-def chunk_documents(documents, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
-    """Split documents into overlapping word-based chunks."""
+def chunk_documents(
+    documents,
+    chunk_size=CHUNK_SIZE,
+    overlap=OVERLAP
+):
+    """Split documents into word-based chunks."""
 
     if chunk_size <= 0:
         raise ValueError("chunk_size must be positive")
 
     if overlap < 0 or overlap >= chunk_size:
-        raise ValueError("overlap must be between 0 and chunk_size")
+        raise ValueError(
+            "overlap must be between 0 and chunk_size"
+        )
 
     chunks = []
     step = chunk_size - overlap
@@ -60,7 +72,7 @@ def chunk_documents(documents, chunk_size=CHUNK_SIZE, overlap=OVERLAP):
         for start in range(0, len(words), step):
             chunk_words = words[start:start + chunk_size]
 
-            # Skip only a trailing fragment of 10 words or fewer.
+            # Ignore only a trailing fragment no larger than overlap.
             if len(chunk_words) <= overlap:
                 continue
 
@@ -86,6 +98,10 @@ class PolicyRetriever:
         self.matrix = self.vectorizer.fit_transform(texts)
 
     def retrieve(self, query, k=TOP_K):
+        """Return the top-k chunks for a question."""
+        if not query or not str(query).strip():
+            return []
+
         query_vector = self.vectorizer.transform([query])
 
         scores = cosine_similarity(
@@ -107,14 +123,12 @@ class PolicyRetriever:
         return results
 
 
-def answer(question, retriever):
-    """Generate an answer using only the retrieved policy context."""
-
-    results = retriever.retrieve(question, k=TOP_K)
+def answer(question, retrieved_chunks):
+    """Generate an answer using only the supplied retrieved context."""
 
     context_parts = []
 
-    for item in results:
+    for item in retrieved_chunks:
         context_parts.append(
             f"[{item['source']}]\n{item['text']}"
         )
@@ -122,35 +136,50 @@ def answer(question, retriever):
     context = "\n\n".join(context_parts)
 
     user_message = (
-        f"CONTEXT:\n{context}\n"
+        f"CONTEXT:\n{context}\n\n"
         f"QUESTION:\n{question}"
     )
 
     response = mock_llm.chat([
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": user_message}
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT
+        },
+        {
+            "role": "user",
+            "content": user_message
+        }
     ])
 
+    answer_text = response.choices[0].message.content.strip()
+
     return {
-        "answer": response.choices[0].message.content,
+        "answer": answer_text,
         "sources": list(dict.fromkeys(
-            item["source"] for item in results
+            item["source"] for item in retrieved_chunks
         ))
     }
 
 
 def evaluate(retriever, evaluation_data):
-    """Evaluate retrieval accuracy, answer facts and fallback."""
+    """Evaluate document retrieval, exact fact matching and fallback."""
 
     rows = []
 
     for _, row in evaluation_data.iterrows():
-        question = row["question"]
-        expected_doc = row["expected_doc"]
+        question = str(row["question"])
+        expected_doc = str(row["expected_doc"]).strip()
         expected_fact = str(row["expected_fact"])
 
-        retrieved = retriever.retrieve(question, k=TOP_K)
-        result = answer(question, retriever)
+        # Retrieve only once so the answer and evaluation use
+        # exactly the same retrieved context.
+        retrieved = retriever.retrieve(
+            question,
+            k=TOP_K
+        )
+
+        result = answer(question, retrieved)
+        answer_text = result["answer"]
 
         retrieved_docs = [
             item["source"] for item in retrieved
@@ -160,24 +189,24 @@ def evaluate(retriever, evaluation_data):
             doc_match = None
             fact_match = None
 
-            fallback_match = result["answer"].startswith(
-                "I could not find"
+            fallback_match = (
+                answer_text == FALLBACK_ANSWER
             )
 
         else:
             doc_match = expected_doc in retrieved_docs
 
-            fact_match = (
-                expected_fact.lower() in result["answer"].lower()
-            )
+            # Assignment-compliant case-sensitive substring check.
+            fact_match = expected_fact in answer_text
 
             fallback_match = None
 
         rows.append({
             "question": question,
             "expected_doc": expected_doc,
+            "expected_fact": expected_fact,
             "retrieved_docs": ", ".join(retrieved_docs),
-            "answer": result["answer"],
+            "answer": answer_text,
             "doc_match": doc_match,
             "fact_match": fact_match,
             "fallback_match": fallback_match
@@ -187,26 +216,71 @@ def evaluate(retriever, evaluation_data):
 
 
 def print_evaluation(results, title):
+    """Print evaluation metrics and failed questions."""
+
     print(f"\n{title}")
     print("=" * 60)
 
-    answerable = results[results["expected_doc"] != "NONE"]
-    unanswerable = results[results["expected_doc"] == "NONE"]
+    answerable = results[
+        results["expected_doc"] != "NONE"
+    ].copy()
+
+    unanswerable = results[
+        results["expected_doc"] == "NONE"
+    ].copy()
+
+    doc_correct = int(
+        answerable["doc_match"].fillna(False).sum()
+    )
+
+    fact_correct = int(
+        answerable["fact_match"].fillna(False).sum()
+    )
+
+    fallback_correct = int(
+        unanswerable["fallback_match"].fillna(False).sum()
+    )
 
     print(
         "Expected document in top 3:",
-        f"{int(answerable['doc_match'].sum())}/{len(answerable)}"
+        f"{doc_correct}/{len(answerable)}"
     )
 
     print(
         "Expected fact in answer:",
-        f"{int(answerable['fact_match'].sum())}/{len(answerable)}"
+        f"{fact_correct}/{len(answerable)}"
     )
 
     print(
         "Correct fallback:",
-        f"{int(unanswerable['fallback_match'].sum())}/{len(unanswerable)}"
+        f"{fallback_correct}/{len(unanswerable)}"
     )
+
+    failed_facts = answerable[
+        answerable["fact_match"].eq(False)
+    ]
+
+    if not failed_facts.empty:
+        print("\nFAILED FACT QUESTIONS")
+        print("-" * 60)
+
+        for _, row in failed_facts.iterrows():
+            print("\nQuestion:", row["question"])
+            print("Expected fact:", row["expected_fact"])
+            print("Actual answer:", row["answer"])
+
+    failed_docs = answerable[
+        answerable["doc_match"].eq(False)
+    ]
+
+    if not failed_docs.empty:
+        print("\nFAILED DOCUMENT RETRIEVAL QUESTIONS")
+        print("-" * 60)
+
+        for _, row in failed_docs.iterrows():
+            print("\nQuestion:", row["question"])
+            print("Expected document:", row["expected_doc"])
+            print("Retrieved documents:", row["retrieved_docs"])
 
 
 def main():
@@ -216,14 +290,34 @@ def main():
 
     print("Policy documents loaded:", len(documents))
 
-    # Overlapping chunk evaluation.
+    evaluation_data = pd.read_csv(EVAL_FILE)
+
+    required_columns = {
+        "question",
+        "expected_doc",
+        "expected_fact"
+    }
+
+    missing_columns = required_columns - set(
+        evaluation_data.columns
+    )
+
+    if missing_columns:
+        raise ValueError(
+            f"Evaluation CSV is missing columns: {sorted(missing_columns)}"
+        )
+
+    # --------------------------------------------------
+    # 1. OVERLAPPING CHUNK EVALUATION
+    # --------------------------------------------------
+
     chunks = chunk_documents(
         documents,
         chunk_size=CHUNK_SIZE,
         overlap=OVERLAP
     )
 
-    print("Overlapping chunks:", len(chunks))
+    print("\nOverlapping chunks:", len(chunks))
 
     chunk_counts = pd.Series(
         [chunk["source"] for chunk in chunks]
@@ -235,7 +329,10 @@ def main():
     retriever = PolicyRetriever(chunks)
 
     test_query = "refund policy late delivery"
-    test_results = retriever.retrieve(test_query, k=TOP_K)
+    test_results = retriever.retrieve(
+        test_query,
+        k=TOP_K
+    )
 
     print("\nTop 3 results for:", test_query)
 
@@ -246,11 +343,12 @@ def main():
             round(result["score"], 4)
         )
 
-    evaluation_data = pd.read_csv(EVAL_FILE)
-
     mock_llm.reset()
 
-    results = evaluate(retriever, evaluation_data)
+    results = evaluate(
+        retriever,
+        evaluation_data
+    )
 
     print_evaluation(
         results,
@@ -262,7 +360,10 @@ def main():
         index=False
     )
 
-    # Zero-overlap comparison.
+    # --------------------------------------------------
+    # 2. ZERO-OVERLAP CHUNK EVALUATION
+    # --------------------------------------------------
+
     zero_chunks = chunk_documents(
         documents,
         chunk_size=CHUNK_SIZE,
@@ -289,6 +390,10 @@ def main():
         OUTPUT_DIR / "policy_eval_zero_overlap.csv",
         index=False
     )
+
+    print("\nEvaluation files saved:")
+    print(OUTPUT_DIR / "policy_eval_results.csv")
+    print(OUTPUT_DIR / "policy_eval_zero_overlap.csv")
 
     print("\nPart D policy RAG evaluation completed.")
 

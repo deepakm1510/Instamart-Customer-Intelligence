@@ -1,4 +1,3 @@
-
 from pathlib import Path
 import sys
 import re
@@ -13,6 +12,7 @@ import pandas as pd
 # --------------------------------------------------
 
 ROOT = Path(__file__).resolve().parent.parent
+
 sys.path.insert(0, str(ROOT))
 
 import mock_llm
@@ -117,42 +117,54 @@ def prepare_tickets():
 # --------------------------------------------------
 
 ZERO_SHOT_SYSTEM = """
+
 CLASSIFY the customer support ticket into exactly one category.
 
 Allowed categories:
+
 billing, delivery, technical, fraud.
 
 Return JSON only, using exactly this structure:
+
 {"category":"one_allowed_category","reason":"short reason"}
 
 Do not return explanations outside the JSON.
+
 """
 
 
 FEW_SHOT_SYSTEM = """
+
 CLASSIFY the customer support ticket into exactly one category.
 
 Allowed categories:
+
 billing, delivery, technical, fraud.
 
 EXAMPLES:
 
 Ticket: I was charged twice for my order.
+
 Output: {"category":"billing","reason":"duplicate charge"}
 
 Ticket: My payment was made but the order was not placed.
+
 Output: {"category":"billing","reason":"payment issue"}
 
 Ticket: Someone accessed my account without permission.
+
 Output: {"category":"fraud","reason":"unauthorized access"}
 
 Ticket: The app crashes whenever I open it.
+
 Output: {"category":"technical","reason":"app malfunction"}
 
 Return JSON only, using exactly this structure:
+
 {"category":"one_allowed_category","reason":"short reason"}
 
 Do not return explanations outside the JSON.
+
 """
 
 
@@ -254,13 +266,15 @@ def classify_ticket(
                 * rng.uniform(0.9, 1.15)
             )
 
-            retry_number += 1
-
+            # Print the current retry number before incrementing.
             print(
                 f"Ticket {ticket_id}: retry "
                 f"{retry_number}/{MAX_RETRIES}, "
                 f"waiting {delay:.4f} seconds"
             )
+
+            # Increment AFTER printing.
+            retry_number += 1
 
             time.sleep(delay)
 
@@ -463,6 +477,7 @@ def apply_routing(results):
             route = "support_queue"
 
         final_rows.append({
+
             "ticket_id": row["ticket_id"],
             "customer_id": customer_id,
             "status": status,
@@ -471,6 +486,7 @@ def apply_routing(results):
             "priority": priority,
             "route": route,
             "tokens_used": row["tokens_used"],
+
         })
 
     # Required final output column order.
@@ -601,6 +617,7 @@ def main():
     print("\nFinal tokens used:", final_tokens)
 
     print("\nSaved:")
+
     print(OUTPUT_DIR / "triage_results.csv")
     print(OUTPUT_DIR / "triage_budget_demo.csv")
 

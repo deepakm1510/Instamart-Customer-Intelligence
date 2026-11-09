@@ -1,0 +1,19 @@
+{
+  "run_id": "timeout_demo",
+  "scenario_id": "S1_TIMEOUT_DEMO",
+  "user_message": "My order ORD-100048 reached me very late. I would like a refund.",
+  "messages": [
+    {
+      "role": "system",
+      "content": "\nYou are an AGENT for Instamart customer refund support.\n\nUse the available tools to investigate refund requests.\nFollow the supplied refund policy.\nNever invent order information or refund amounts.\n\nOnly completed orders can receive refunds.\nOrders delivered in more than 45 minutes qualify for\na full refund of their order amount.\nOrders delivered in 45 minutes or less receive no refund.\nRefunds above INR 1000 must be escalated to a human lead.\n"
+    },
+    {
+      "role": "user",
+      "content": "My order ORD-100048 reached me very late. I would like a refund."
+    }
+  ],
+  "tokens_used": 0,
+  "llm_calls": 0,
+  "steps": [],
+  "tools_executed": []
+}

@@ -1,6 +1,6 @@
 # Instamart Customer Intelligence & Support Copilot
 
-**Capstone Project – IIT Patna**
+**Capstone Project - IIT Patna**
 
 ## Overview
 
@@ -38,7 +38,7 @@ pip install -r requirements.txt
 python generate_data.py
 ```
 
-### 4. Run Part A – Data Foundation
+### 4. Run Part A - Data Foundation
 
 ```powershell
 python src/audit_raw_data.py
@@ -49,19 +49,19 @@ python src/verify_sql_details.py
 python src/pandas_analysis.py
 ```
 
-### 5. Run Part B – Customer Intelligence
+### 5. Run Part B - Customer Intelligence
 
 ```powershell
 python src/customer_models.py
 ```
 
-### 6. Run Part C – Ticket Triage
+### 6. Run Part C - Ticket Triage
 
 ```powershell
 python src/triage.py
 ```
 
-### 7. Run Part D – Policy Retrieval and Refund Agent
+### 7. Run Part D - Policy Retrieval and Refund Agent
 
 ```powershell
 python src/policy_rag.py
@@ -112,6 +112,13 @@ Pandas analysis independently confirmed the completed-order revenue of INR 2,998
 
 The model is intended to support customer-retention decisions, not to guarantee future customer behaviour.
 
+### Retention Shortlist
+
+- Generated a retention shortlist in `outputs/retention_list.csv`.
+- The shortlist is an illustrative prioritization output for retention campaigns.
+- The top 10 shortlisted customers included 2 customers who were actually lapsed.
+- Customer segments are derived from the full analysis window, so the shortlist should not be interpreted as a leakage-free prospective evaluation.
+
 ## Part C
 
 ### Support Ticket Classification and Triage
@@ -146,11 +153,23 @@ The few-shot run improved classification accuracy on the evaluation data but use
 - Added checkpoint-based crash recovery to resume interrupted workflows.
 - Recorded agent execution details in JSONL files and refund actions in a refund ledger.
 
-### Key Results
+### Policy Retrieval Evaluation
+
+The retrieval system was evaluated using overlapping and zero-overlap text chunks.
+
+| Evaluation Metric | Overlapping Chunks | Zero-Overlap Chunks |
+|---|---:|---:|
+| Expected document in top 3 | 12/12 | 12/12 |
+| Expected fact in answer | 12/12 | 10/12 |
+| Correct fallback | 2/2 | 2/2 |
+
+The overlapping-chunk configuration retrieved all expected facts in the evaluation questions. With zero-overlap chunks, 2 of 12 expected facts were missed, demonstrating the benefit of retaining contextual overlap between chunks.
+
+### Refund Agent Key Results
 
 - Scenarios executed: **7**
 - Total LLM calls: **30**
-- Total tokens used: **9,129**
+- Total tokens used: **9,127**
 - Refund outcomes: **2**
 - Escalation outcomes: **1**
 - Crash-recovery demonstration: **Completed successfully**
@@ -158,9 +177,41 @@ The few-shot run improved classification accuracy on the evaluation data but use
 
 ### ReAct vs Plan-and-Execute
 
-The ReAct agent was selected because it alternates reasoning and tool execution. Each next action can depend on the previous tool observation. Across seven scenarios, the agent used 30 LLM calls and 9,129 tokens. It stopped early when further actions were unnecessary, such as when an order was cancelled or not found.
+The ReAct agent was selected because it alternates reasoning and tool execution. Each next action can depend on the previous tool observation. Across seven scenarios, the agent used 30 LLM calls and 9,127 tokens. It stopped early when further actions were unnecessary, such as when an order was cancelled or not found.
 
 A Plan-and-Execute agent could provide a more predictable, auditable sequence, but may perform unnecessary steps if an early observation changes the plan. ReAct is more suitable for this workflow, with iteration, token, and timeout limits and checkpoint-based crash recovery.
+
+## Generated Outputs
+
+### Data and Database
+
+- `data/instamart.db` - SQLite database containing the cleaned project tables.
+
+### Part B - Customer Intelligence
+
+- `outputs/customer_rfm.csv`
+- `outputs/customer_segments.csv`
+- `outputs/clustering_evaluation.csv`
+- `outputs/lapse_features.csv`
+- `outputs/lapse_model.joblib`
+- `outputs/retention_list.csv`
+
+### Part C - Ticket Triage
+
+- `outputs/triage_results.csv`
+- `outputs/triage_budget_demo.csv`
+- `outputs/triage_run_log.txt`
+
+### Part D - Policy Retrieval and Refund Agent
+
+- `outputs/policy_eval_results.csv`
+- `outputs/policy_eval_zero_overlap.csv`
+- `outputs/agent_runs.jsonl`
+- `outputs/refund_ledger.jsonl`
+
+### Agent Checkpoints
+
+The `state/` directory contains saved scenario checkpoints and demonstrations for crash recovery, token limits, and timeout handling.
 
 ## Limitations and Next Steps
 
@@ -168,4 +219,6 @@ A Plan-and-Execute agent could provide a more predictable, auditable sequence, b
 - The project uses the supplied mock LLM rather than a live production LLM.
 - Model performance is based on the available synthetic dataset.
 - Customer lapse predictions are not guaranteed outcomes.
+- The retention shortlist is illustrative and is not a leakage-free prospective evaluation.
+- Policy retrieval evaluation is based on the supplied evaluation questions and policy documents.
 - Future improvements could include testing on real-world data, monitoring model drift, and evaluating additional retention strategies.
